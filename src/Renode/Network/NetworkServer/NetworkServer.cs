@@ -20,6 +20,8 @@ using Antmicro.Renode.Logging;
 using Antmicro.Renode.Exceptions;
 
 using System.Linq;
+using Antmicro.Renode.Utilities;
+using PacketDotNet.Utils;
 
 namespace Antmicro.Renode.Network
 {
@@ -150,10 +152,55 @@ namespace Antmicro.Renode.Network
                     HandleUdp((UdpPacket)packet.PayloadPacket);
                     break;
 
+                case PacketDotNet.IPProtocolType.ICMP:
+                    HandleIcmp(packet);
+                    break;
+
                 default:
                     this.Log(LogLevel.Warning, "Unsupported protocol: {0}", packet.Protocol);
                     break;
             }
+        }
+
+        /// <summary>
+        /// For now only handles ICMP Echo Reply and Request (forwards it)
+        /// </summary>
+        /// <param name="packet"></param>
+        private void HandleIcmp(IPv4Packet packet)
+        {
+            var icmpPacket = (ICMPv4Packet) packet.PayloadPacket;
+
+            var isItOurAddress = packet.DestinationAddress == IP;
+
+            var icmpResponse = isItOurAddress
+                ? ICMPv4TypeCodes.EchoReply.AsRawBytes()
+                : ICMPv4TypeCodes.EchoRequest.AsRawBytes();
+            var icmpDestination = isItOurAddress
+                ? arpTable[packet.SourceAddress]
+                : arpTable[packet.DestinationAddress];
+
+            this.Log(LogLevel.Noisy, "Handling ICMP packet: {0}", icmpPacket);
+
+            // For now we only respond to Echo Requests/Replies so everything else is discarded
+            if (icmpPacket.TypeCode != ICMPv4TypeCodes.EchoRequest)
+            {
+                this.Log(LogLevel.Warning, "Unsupported ICMP code: {0}", icmpPacket);
+                return;
+            }
+
+            var ethernetResponse = new EthernetPacket((PhysicalAddress) MAC,
+                icmpDestination, EthernetPacketType.None); // Should it be None...?
+
+            ethernetResponse.PayloadPacket = new ICMPv4Packet(
+                new ByteArraySegment(icmpResponse));
+
+            this.Log(LogLevel.Noisy, "Sending response: {0}",
+                ethernetResponse);
+
+            // We finally create, and send the ethernet frame
+            EthernetFrame.TryCreateEthernetFrame(ethernetResponse.Bytes,
+                false, out var response);
+            FrameReady?.Invoke(response);
         }
 
         private void HandleUdp(UdpPacket packet)
