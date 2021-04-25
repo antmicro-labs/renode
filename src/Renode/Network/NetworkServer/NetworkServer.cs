@@ -163,49 +163,61 @@ namespace Antmicro.Renode.Network
         }
 
         /// <summary>
-        /// For now only handles ICMP Echo Reply and Request (forwards it)
+        /// Handles the ICMP protocol. Handles only Echo Request by either answering it if its
+        /// meant for us, or discarding it if its for another IP
         /// </summary>
-        /// <param name="packet"></param>
+        /// <param name="packet">Ipv4 packet with the ICMP request</param>
         private void HandleIcmp(IPv4Packet packet)
         {
             var icmpPacket = (ICMPv4Packet) packet.PayloadPacket;
-            
-            // If destination address is not same as out IP ignore it
-            if (packet.DestinationAddress == IP)
+
+            // If the destination address is not same as our IP, we ignore it
+            if (packet.DestinationAddress.Equals(IP))
             {
-                this.Log(LogLevel.Warning, "Wrong destination adresss: {0}", packet.DestinationAddress);
+                this.Log(LogLevel.Warning, "Wrong destination address: {0}",
+                    packet.DestinationAddress);
                 return;
             }
 
-            // For now we only respond to Echo Requests/Replies so everything else is discarded
-            if (icmpPacket.TypeCode != ICMPv4TypeCodes.EchoRequest)
+            // For now we only respond to Echo Requests so everything else is discarded
+            if (!icmpPacket.TypeCode.Equals(ICMPv4TypeCodes.EchoRequest))
             {
-                this.Log(LogLevel.Warning, "Unsupported ICMP code: {0}", icmpPacket);
+                this.Log(LogLevel.Warning, "Unsupported ICMP code: {0}",
+                    icmpPacket);
                 return;
             }
-            
+
             this.Log(LogLevel.Noisy, "Handling ICMP packet: {0}", icmpPacket);
-            
-            // Creating ICMP Response and Destination address
+
+            // We create an ICMP Response and Destination address to which
+            // the response will be sent
             var icmpResponse = ICMPv4TypeCodes.EchoReply.AsRawBytes();
             var icmpDestination = arpTable[packet.SourceAddress];
-            
+
+            // We create the ethernet packet which will include the IPv4 packet
             var ethernetResponse = new EthernetPacket((PhysicalAddress) MAC,
-                icmpDestination, EthernetPacketType.None); // Should it be None...?
-            
-            //
-            var src = new IPEndPoint(((IPv4Packet) packet.ParentPacket).SourceAddress, packet.SourcePort);
-            var ipPacket = new IPv4Packet(IP, src.Address);
-            var icmpPacketResponse = new ICMPv4Packet(new ByteArraySegment(icmpResponse));
-            
+                icmpDestination,
+                EthernetPacketType.None); // Should it be None...?
+
+            // We create the IPv4 packet that will be sent in the Ethernet frame
+            // ICMP as a protocol does not use a port, so we just give an IP address
+            var ipPacket = new IPv4Packet(IP,
+                ((IPv4Packet) packet.ParentPacket).SourceAddress);
+
+            // We create the ICMP response packet that will be sent in the IPv4 packet
+            var icmpPacketResponse =
+                new ICMPv4Packet(new ByteArraySegment(icmpResponse));
+
+            // We put the ICMP packet with the response into the IPv4 packet, then
+            // we put that in the Ethernet frame, and recalculate the checksum
             ipPacket.PayloadPacket = icmpPacketResponse;
             ethernetResponse.PayloadPacket = ipPacket;
             icmpPacketResponse.UpdateCalculatedValues();
-            
+
             this.Log(LogLevel.Noisy, "Sending response: {0}",
                 ethernetResponse);
 
-            // We finally create, and send the ethernet frame
+            // We finally create, and send the Ethernet frame
             EthernetFrame.TryCreateEthernetFrame(ethernetResponse.Bytes,
                 false, out var response);
             FrameReady?.Invoke(response);
@@ -221,8 +233,13 @@ namespace Antmicro.Renode.Network
                 return;
             }
 
-            var src = new IPEndPoint(((IPv4Packet)packet.ParentPacket).SourceAddress, packet.SourcePort); 
-            module.HandleUdp(src, packet, (s, r) => HandleUdpResponse(s, r));
+            var src = new IPEndPoint(
+                ((IPv4Packet) packet.ParentPacket).SourceAddress,
+                packet.SourcePort);
+
+            // We cast the module to a UDP server so it uses its implementation of HandleUdp
+            ((IUdpServerModule) module).HandleUdp(src, packet,
+                (s, r) => HandleUdpResponse(s, r));
         }
 
         private void HandleUdpResponse(IPEndPoint source, UdpPacket response)
