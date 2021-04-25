@@ -169,17 +169,13 @@ namespace Antmicro.Renode.Network
         private void HandleIcmp(IPv4Packet packet)
         {
             var icmpPacket = (ICMPv4Packet) packet.PayloadPacket;
-
-            var isItOurAddress = packet.DestinationAddress == IP;
-
-            var icmpResponse = isItOurAddress
-                ? ICMPv4TypeCodes.EchoReply.AsRawBytes()
-                : ICMPv4TypeCodes.EchoRequest.AsRawBytes();
-            var icmpDestination = isItOurAddress
-                ? arpTable[packet.SourceAddress]
-                : arpTable[packet.DestinationAddress];
-
-            this.Log(LogLevel.Noisy, "Handling ICMP packet: {0}", icmpPacket);
+            
+            // If destination address is not same as out IP ignore it
+            if (packet.DestinationAddress == IP)
+            {
+                this.Log(LogLevel.Warning, "Wrong destination adresss: {0}", packet.DestinationAddress);
+                return;
+            }
 
             // For now we only respond to Echo Requests/Replies so everything else is discarded
             if (icmpPacket.TypeCode != ICMPv4TypeCodes.EchoRequest)
@@ -187,13 +183,25 @@ namespace Antmicro.Renode.Network
                 this.Log(LogLevel.Warning, "Unsupported ICMP code: {0}", icmpPacket);
                 return;
             }
-
+            
+            this.Log(LogLevel.Noisy, "Handling ICMP packet: {0}", icmpPacket);
+            
+            // Creating ICMP Response and Destination address
+            var icmpResponse = ICMPv4TypeCodes.EchoReply.AsRawBytes();
+            var icmpDestination = arpTable[packet.SourceAddress];
+            
             var ethernetResponse = new EthernetPacket((PhysicalAddress) MAC,
                 icmpDestination, EthernetPacketType.None); // Should it be None...?
-
-            ethernetResponse.PayloadPacket = new ICMPv4Packet(
-                new ByteArraySegment(icmpResponse));
-
+            
+            //
+            var src = new IPEndPoint(((IPv4Packet) packet.ParentPacket).SourceAddress, packet.SourcePort);
+            var ipPacket = new IPv4Packet(IP, src.Address);
+            var icmpPacketResponse = new ICMPv4Packet(new ByteArraySegment(icmpResponse));
+            
+            ipPacket.PayloadPacket = icmpPacketResponse;
+            ethernetResponse.PayloadPacket = ipPacket;
+            icmpPacketResponse.UpdateCalculatedValues();
+            
             this.Log(LogLevel.Noisy, "Sending response: {0}",
                 ethernetResponse);
 
