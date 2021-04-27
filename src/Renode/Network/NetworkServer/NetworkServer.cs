@@ -197,7 +197,7 @@ namespace Antmicro.Renode.Network
             // We create the ethernet packet which will include the IPv4 packet
             var ethernetResponse = new EthernetPacket((PhysicalAddress) MAC,
                 icmpDestination,
-                EthernetPacketType.None); // Should it be None...?
+                EthernetPacketType.None);
 
             // We create the IPv4 packet that will be sent in the Ethernet frame
             // ICMP as a protocol does not use a port, so we just give an IP address
