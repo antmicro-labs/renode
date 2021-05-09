@@ -20,8 +20,6 @@ using Antmicro.Renode.Logging;
 using Antmicro.Renode.Exceptions;
 
 using System.Linq;
-using Antmicro.Renode.Utilities;
-using PacketDotNet.Utils;
 
 namespace Antmicro.Renode.Network
 {
@@ -37,18 +35,17 @@ namespace Antmicro.Renode.Network
     {
         public NetworkServer(string ipAddress, string macAddress = null)
         {
-            if (!IPAddress.TryParse(ipAddress, out var parsedIP))
+            if(!IPAddress.TryParse(ipAddress, out var parsedIP))
             {
                 new ConstructionException($"Invalid IP address: {ipAddress}");
             }
 
-            if (macAddress != null)
+            if(macAddress != null)
             {
-                if (!MACAddress.TryParse(macAddress, out var parsedMAC))
+                if(!MACAddress.TryParse(macAddress, out var parsedMAC))
                 {
                     new ConstructionException($"Invalid MAC address: {macAddress}");
                 }
-
                 MAC = parsedMAC;
             }
             else
@@ -63,7 +60,7 @@ namespace Antmicro.Renode.Network
             modules = new Dictionary<int, IServerModule>();
             modulesNames = new Dictionary<string, int>();
 
-            IcmpModule = new IcmpServer(IP, MAC);
+            IcmpServerModule IcmpModule = new IcmpServerModule(IP,MAC);
 
             this.Log(LogLevel.Info, "Network server started at IP {0}", IP);
         }
@@ -75,7 +72,7 @@ namespace Antmicro.Renode.Network
 
         public IServerModule TryGetByName(string name, out bool success)
         {
-            if (!modulesNames.TryGetValue(name, out var port))
+            if(!modulesNames.TryGetValue(name, out var port))
             {
                 success = false;
                 return null;
@@ -87,13 +84,13 @@ namespace Antmicro.Renode.Network
 
         public bool RegisterModule(IServerModule module, int port, string name)
         {
-            if (modules.ContainsKey(port))
+            if(modules.ContainsKey(port))
             {
                 this.Log(LogLevel.Error, "Couldn't register module on port {0} as it's already used", port);
                 return false;
             }
 
-            if (modulesNames.ContainsKey(name))
+            if(modulesNames.ContainsKey(name))
             {
                 this.Log(LogLevel.Error, "Couldn't register module by name {0} as it's already used", name);
                 return false;
@@ -114,23 +111,22 @@ namespace Antmicro.Renode.Network
             this.Log(LogLevel.Noisy, Misc.PrettyPrintCollectionHex(frame.Bytes));
 #endif
 
-            switch (ethernetPacket.Type)
+            switch(ethernetPacket.Type)
             {
                 case EthernetPacketType.Arp:
-                    if (TryHandleArp((ARPPacket) ethernetPacket.PayloadPacket, out var arpResponse))
+                    if(TryHandleArp((ARPPacket)ethernetPacket.PayloadPacket, out var arpResponse))
                     {
-                        var ethernetResponse = new EthernetPacket((PhysicalAddress) MAC, ethernetPacket.SourceHwAddress, EthernetPacketType.None);
+                        var ethernetResponse = new EthernetPacket((PhysicalAddress)MAC, ethernetPacket.SourceHwAddress, EthernetPacketType.None);
                         ethernetResponse.PayloadPacket = arpResponse;
 
                         this.Log(LogLevel.Noisy, "Sending response: {0}", ethernetResponse);
                         EthernetFrame.TryCreateEthernetFrame(ethernetResponse.Bytes, false, out var response);
                         FrameReady?.Invoke(response);
                     }
-
                     break;
 
                 case EthernetPacketType.IpV4:
-                    var ipv4Packet = (IPv4Packet) ethernetPacket.PayloadPacket;
+                    var ipv4Packet = (IPv4Packet)ethernetPacket.PayloadPacket;
                     arpTable[ipv4Packet.SourceAddress] = ethernetPacket.SourceHwAddress;
                     HandleIPv4(ipv4Packet);
                     break;
@@ -143,7 +139,6 @@ namespace Antmicro.Renode.Network
 
         public MACAddress MAC { get; set; }
         public IPAddress IP { get; set; }
-        public IcmpServer IcmpModule { get; set; }
 
         public event Action<EthernetFrame> FrameReady;
 
@@ -151,14 +146,10 @@ namespace Antmicro.Renode.Network
         {
             this.Log(LogLevel.Noisy, "Handling IPv4 packet: {0}", packet);
 
-            switch (packet.Protocol)
+            switch(packet.Protocol)
             {
                 case PacketDotNet.IPProtocolType.UDP:
-                    HandleUdp((UdpPacket) packet.PayloadPacket);
-                    break;
-
-                case PacketDotNet.IPProtocolType.ICMP:
-                    HandleIcmp(packet);
+                    HandleUdp((UdpPacket)packet.PayloadPacket);
                     break;
 
                 default:
@@ -174,24 +165,19 @@ namespace Antmicro.Renode.Network
         /// <param name="packet">Ipv4 packet with the ICMP request</param>
         private void HandleIcmp(IPv4Packet packet)
         {
-            IcmpModule.arpTable = arpTable;
-            IcmpModule.HandleIcmpPacket(FrameReady, packet);
+            IcmpModule.HandleIcmpPacket(FrameReady, packet, arpTable[packet.SourceAddress]);
         }
-
         private void HandleUdp(UdpPacket packet)
         {
             this.Log(LogLevel.Noisy, "Handling UDP packet: {0}", packet);
 
-            if (!modules.TryGetValue(packet.DestinationPort, out var module))
+            if(!modules.TryGetValue(packet.DestinationPort, out var module))
             {
                 this.Log(LogLevel.Warning, "Received UDP packet on port {0}, but no service is active", packet.DestinationPort);
                 return;
             }
 
-            var src = new IPEndPoint(
-                ((IPv4Packet) packet.ParentPacket).SourceAddress,
-                packet.SourcePort);
-
+            var src = new IPEndPoint(((IPv4Packet)packet.ParentPacket).SourceAddress, packet.SourcePort); 
             // We cast the module to a UDP server so it uses its implementation of HandleUdp
             ((IUdpServerModule) module).HandleUdp(src, packet,
                 (s, r) => HandleUdpResponse(s, r));
@@ -200,7 +186,7 @@ namespace Antmicro.Renode.Network
         private void HandleUdpResponse(IPEndPoint source, UdpPacket response)
         {
             var ipPacket = new IPv4Packet(IP, source.Address);
-            var ethernetPacket = new EthernetPacket((PhysicalAddress) MAC, arpTable[source.Address], EthernetPacketType.None);
+            var ethernetPacket = new EthernetPacket((PhysicalAddress)MAC, arpTable[source.Address], EthernetPacketType.None);
 
             ipPacket.PayloadPacket = response;
             ethernetPacket.PayloadPacket = ipPacket;
@@ -218,13 +204,13 @@ namespace Antmicro.Renode.Network
 
             this.Log(LogLevel.Noisy, "Handling ARP packet: {0}", packet);
 
-            if (packet.Operation != ARPOperation.Request)
+            if(packet.Operation != ARPOperation.Request)
             {
                 this.Log(LogLevel.Warning, "Unsupported ARP packet: {0}", packet);
                 return false;
             }
 
-            if (!packet.TargetProtocolAddress.Equals(IP))
+            if(!packet.TargetProtocolAddress.Equals(IP))
             {
                 this.Log(LogLevel.Noisy, "This ARP packet is not directed to me. Ignoring");
                 return false;
@@ -234,7 +220,7 @@ namespace Antmicro.Renode.Network
                 ARPOperation.Response,
                 packet.SenderHardwareAddress,
                 packet.SenderProtocolAddress,
-                (PhysicalAddress) MAC,
+                (PhysicalAddress)MAC,
                 IP);
 
             this.Log(LogLevel.Noisy, "Sending ARP response");
@@ -245,76 +231,4 @@ namespace Antmicro.Renode.Network
         private readonly Dictionary<string, int> modulesNames;
         private readonly Dictionary<IPAddress, PhysicalAddress> arpTable;
     }
-
-    public class IcmpServer: IExternal
-    {
-
-        public IcmpServer(IPAddress serverIP, MACAddress serverMAC)
-        {
-            IP = serverIP;
-            MAC = serverMAC;
-            arpTable = new Dictionary<IPAddress, PhysicalAddress>();
-        }
-        
-        public MACAddress MAC { get; set; }
-        public IPAddress IP { get; set; }
-        public Dictionary<IPAddress, PhysicalAddress> arpTable;
-
-        public void HandleIcmpPacket(Action<EthernetFrame> FrameReady, IPv4Packet packet)
-        {
-            var icmpPacket = (ICMPv4Packet) packet.PayloadPacket;
-
-            // If the destination address is not same as our IP, we ignore it
-            if (packet.DestinationAddress.Equals(IP))
-            {
-                this.Log(LogLevel.Warning, "Wrong destination address: {0}",
-                    packet.DestinationAddress);
-                return;
-            }
-
-            // For now we only respond to Echo Requests so everything else is discarded
-            if (!icmpPacket.TypeCode.Equals(ICMPv4TypeCodes.EchoRequest))
-            {
-                this.Log(LogLevel.Warning, "Unsupported ICMP code: {0}",
-                    icmpPacket);
-                return;
-            }
-
-            this.Log(LogLevel.Noisy, "Handling ICMP packet: {0}", icmpPacket);
-
-            // We create an ICMP Response and Destination address to which
-            // the response will be sent
-            var icmpResponse = ICMPv4TypeCodes.EchoReply.AsRawBytes();
-            var icmpDestination = arpTable[packet.SourceAddress];
-
-            // We create the ethernet packet which will include the IPv4 packet
-            var ethernetResponse = new EthernetPacket((PhysicalAddress) MAC,
-                icmpDestination,
-                EthernetPacketType.None); // Should it be None...?
-
-            // We create the IPv4 packet that will be sent in the Ethernet frame
-            // ICMP as a protocol does not use a port, so we just give an IP address
-            var ipPacket = new IPv4Packet(IP,
-                ((IPv4Packet) packet.ParentPacket).SourceAddress);
-
-            // We create the ICMP response packet that will be sent in the IPv4 packet
-            var icmpPacketResponse =
-                new ICMPv4Packet(new ByteArraySegment(icmpResponse));
-
-            // We put the ICMP packet with the response into the IPv4 packet, then
-            // we put that in the Ethernet frame, and recalculate the checksum
-            ipPacket.PayloadPacket = icmpPacketResponse;
-            ethernetResponse.PayloadPacket = ipPacket;
-            icmpPacketResponse.UpdateCalculatedValues();
-
-            this.Log(LogLevel.Noisy, "Sending response: {0}",
-                ethernetResponse);
-
-            // We finally create, and send the Ethernet frame
-            EthernetFrame.TryCreateEthernetFrame(ethernetResponse.Bytes,
-                false, out var response);
-            FrameReady?.Invoke(response);
-        }
-    }
-
 }
