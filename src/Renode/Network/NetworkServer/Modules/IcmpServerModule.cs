@@ -30,8 +30,8 @@ namespace Antmicro.Renode.Network
             MAC = serverMAC;
         }
         
-        private MACAddress MAC { get; set; }
-        private IPAddress IP { get; set; }
+        public MACAddress MAC { get; set; }
+        public IPAddress IP { get; set; }
         
         public void HandleIcmpPacket(Action<EthernetFrame> FrameReady, IPv4Packet packet, PhysicalAddress icmpDestinationAddress)
         {
@@ -71,8 +71,12 @@ namespace Antmicro.Renode.Network
                 ((IPv4Packet) packet.ParentPacket).SourceAddress);
 
             // We create the ICMP response packet that will be sent in the IPv4 packet
+            // and we asing ID, Data and, Sequence the same like in the replay packet
             var icmpPacketResponse =
                 new ICMPv4Packet(new ByteArraySegment(icmpResponse));
+            icmpPacket.Data.CopyTo(icmpPacketResponse.Data, 0);
+            icmpPacketResponse.ID = icmpPacket.ID;
+            icmpPacketResponse.Sequence = icmpPacket.Sequence;
 
             // We put the ICMP packet with the response into the IPv4 packet, then
             // we put that in the Ethernet frame, and recalculate the checksum
