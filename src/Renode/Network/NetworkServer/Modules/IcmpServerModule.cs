@@ -9,14 +9,17 @@ using System;
 using System.IO;
 using System.Net;
 using System.Collections.Generic;
+using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 
 using PacketDotNet;
 
 using Antmicro.Renode.Core;
+using Antmicro.Renode.Core.Structure;
 using Antmicro.Renode.Logging;
 using Antmicro.Renode.Exceptions;
-
+using Antmicro.Renode.Utilities;
+using PacketDotNet.Utils;
 
 
 namespace Antmicro.Renode.Network
@@ -30,8 +33,8 @@ namespace Antmicro.Renode.Network
             MAC = serverMAC;
         }
         
-        public MACAddress MAC { get; set; }
-        public IPAddress IP { get; set; }
+        private MACAddress MAC { get; set; }
+        private IPAddress IP { get; set; }
         
         public void HandleIcmpPacket(Action<EthernetFrame> FrameReady, IPv4Packet packet, PhysicalAddress icmpDestinationAddress)
         {
@@ -84,7 +87,7 @@ namespace Antmicro.Renode.Network
             ethernetResponse.PayloadPacket = ipPacket;
             icmpPacketResponse.UpdateCalculatedValues();
 
-            this.Log(LogLevel.Noisy, "Sending response: {0}",
+            this.Log(LogLevel.Noisy, "Sending respnse: {0}",
                 ethernetResponse);
 
             // We finally create, and send the Ethernet frame
