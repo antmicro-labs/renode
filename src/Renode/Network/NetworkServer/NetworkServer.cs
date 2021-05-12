@@ -159,8 +159,7 @@ namespace Antmicro.Renode.Network
         }
 
         /// <summary>
-        /// Handles the ICMP protocol. Handles only Echo Request by either answering it if its
-        /// meant for us, or discarding it if its for another IP
+        /// Handles the ICMP protocol with HandleIcmp method from the IcmpServerModule class
         /// </summary>
         /// <param name="packet">Ipv4 packet with the ICMP request</param>
         private void HandleIcmp(IPv4Packet packet)
