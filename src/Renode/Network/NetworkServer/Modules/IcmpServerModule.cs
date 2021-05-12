@@ -6,19 +6,17 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Collections.Generic;
 using System.Net.NetworkInformation;
 using System.Threading.Tasks;
-
-using PacketDotNet;
-
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Core.Structure;
-using Antmicro.Renode.Logging;
 using Antmicro.Renode.Exceptions;
+using Antmicro.Renode.Logging;
 using Antmicro.Renode.Utilities;
+using PacketDotNet;
 using PacketDotNet.Utils;
 
 
@@ -162,8 +160,10 @@ namespace Antmicro.Renode.Network
 
             var ethernetResponse = new EthernetPacket((PhysicalAddress)MAC,
                 icmpDestinationAddress,
-                EthernetPacketType.None);
-            ethernetResponse.PayloadPacket = ipv4Packet;
+                EthernetPacketType.None)
+            {
+                PayloadPacket = ipv4Packet
+            };
             icmpv4PacketResponse.UpdateCalculatedValues();
 
             this.Log(LogLevel.Noisy, "Sending response: {0}",

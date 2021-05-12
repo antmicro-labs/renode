@@ -6,8 +6,8 @@
 //
 
 using System;
-using System.Net;
 using System.Collections.Generic;
+using System.Net;
 using PacketDotNet;
 
 namespace Antmicro.Renode.Network
