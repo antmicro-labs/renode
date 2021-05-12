@@ -6,20 +6,17 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
-using System.Collections.Generic;
-
-using PacketDotNet;
-
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Core.Structure;
-using Antmicro.Renode.Peripherals.Network;
-using Antmicro.Renode.Logging;
 using Antmicro.Renode.Exceptions;
-
-using System.Linq;
+using Antmicro.Renode.Logging;
+using Antmicro.Renode.Peripherals.Network;
+using PacketDotNet;
 
 namespace Antmicro.Renode.Network
 {
