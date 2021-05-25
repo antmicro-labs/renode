@@ -6,16 +6,11 @@
 //
 
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
-using System.Threading.Tasks;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Core.Structure;
-using Antmicro.Renode.Exceptions;
 using Antmicro.Renode.Logging;
-using Antmicro.Renode.Utilities;
 using PacketDotNet;
 using PacketDotNet.Utils;
 
@@ -52,9 +47,7 @@ namespace Antmicro.Renode.Network
                 ParentServer.Log(LogLevel.Warning, "Failed to create an ICMPv4 response for this packet: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
                 return;
             }
-            ParentServer.Log(LogLevel.Noisy, "Dupa 1");
             var ipv4ResponsePacket = CreateIPv4Packet(ipv4Packet);
-            ParentServer.Log(LogLevel.Noisy, "Dupa 2");
             if (!CreateEthernetFramePacket(ipv4ResponsePacket, icmpv4PacketResponse, icmpDestinationAddress, out var response))
             {
                 ParentServer.Log(LogLevel.Warning, "Failed to create an EthernetFramePacket response for this packet: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
@@ -104,7 +97,6 @@ namespace Antmicro.Renode.Network
             for (var i = 0; i < byteReply.Length; i++)
                 byteReply[i] = 0;
 
-
             var ipv4PacketPayload = (ICMPv4Packet)ipv4Packet.PayloadPacket;
             ParentServer.Log(LogLevel.Noisy, "Getting a reply if we support it");
 
@@ -124,7 +116,6 @@ namespace Antmicro.Renode.Network
             ParentServer.Log(LogLevel.Noisy, "The ICMP code is supported so we service it: {0}", ipv4PacketPayload);
 
             BitConverter.GetBytes((ushort)ICMPv4TypeCodes.EchoReply).CopyTo(byteReply, 0);
-            BitConverter.GetBytes(ipv4PacketPayload.Checksum).CopyTo(byteReply, 2);
             ParentServer.Log(LogLevel.Noisy, "Created a byte reply to the ICMP request: {0}", byteReply.Length);
             return true;
         }
@@ -140,11 +131,8 @@ namespace Antmicro.Renode.Network
         {
             ParentServer.Log(LogLevel.Noisy, "Creating an ICMPv4 response packet");
             var icmpv4Packet = (ICMPv4Packet)ipv4Packet.PayloadPacket;
-            ParentServer.Log(LogLevel.Noisy, "1");
             var byteArrayReply = new ByteArraySegment(byteReply);
-            ParentServer.Log(LogLevel.Noisy, "2");
             var icmpv4PacketResponse = new ICMPv4Packet(byteArrayReply);
-            ParentServer.Log(LogLevel.Noisy, "3");
             /****************************************************************
 
             +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -155,18 +143,12 @@ namespace Antmicro.Renode.Network
 
             ****************************************************************/
             // We can copy that from request packet because they are the same in the request and the reply
-            ParentServer.Log(LogLevel.Noisy, "icmpv4PacketResponse.Data length: {0}", icmpv4PacketResponse.Data.Length);
-            ParentServer.Log(LogLevel.Noisy, "icmpv4Packet.Data length: {0}", icmpv4Packet.Data.Length);
-            //TODO: icmp4PacketResponse.Data = new byte[icmpv4Packet.Data.Length];
-            //for(var i=0; i<icmpv4PacketResponse.Data.Length; i++) icmp4PacketResponse.Data[i]=0;
             icmpv4PacketResponse.Data = new byte[icmpv4Packet.Data.Length];
             for (var i = 0; i < icmpv4PacketResponse.Data.Length; i++) icmpv4PacketResponse.Data[i] = 0;
+
             icmpv4Packet.Data.CopyTo(icmpv4PacketResponse.Data, 0);
-            ParentServer.Log(LogLevel.Noisy, "4");
             icmpv4PacketResponse.ID = icmpv4Packet.ID;
-            ParentServer.Log(LogLevel.Noisy, "5");
             icmpv4PacketResponse.Sequence = icmpv4Packet.Sequence;
-            ParentServer.Log(LogLevel.Noisy, "6");
 
             ParentServer.Log(LogLevel.Noisy, "Created ICMPv4 response packet: {0}", icmpv4PacketResponse.PayloadPacket);
             return icmpv4PacketResponse;
