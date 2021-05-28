@@ -6,16 +6,11 @@
 //
 
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Net;
 using System.Net.NetworkInformation;
-using System.Threading.Tasks;
 using Antmicro.Renode.Core;
 using Antmicro.Renode.Core.Structure;
-using Antmicro.Renode.Exceptions;
 using Antmicro.Renode.Logging;
-using Antmicro.Renode.Utilities;
 using PacketDotNet;
 using PacketDotNet.Utils;
 
@@ -24,17 +19,18 @@ namespace Antmicro.Renode.Network
 {
     public class IcmpServerModule : IExternal
     {
-        public IcmpServerModule(IPAddress serverIP, MACAddress serverMAC)
+        public IcmpServerModule(NetworkServer MyParentServer, IPAddress serverIP, MACAddress serverMAC)
         {
             IP = serverIP;
             MAC = serverMAC;
+            ParentServer = MyParentServer;
         }
 
 
 
         private MACAddress MAC { get; set; }
         private IPAddress IP { get; set; }
-
+        private NetworkServer ParentServer { get; set; }
 
         /// <summary>
         /// Handles the IPv4 packet with an ICMPv4 request by replying to it if the request is supported
@@ -45,17 +41,20 @@ namespace Antmicro.Renode.Network
         public void HandleIcmpPacket(Action<EthernetFrame> FrameReady, IPv4Packet ipv4Packet,
             PhysicalAddress icmpDestinationAddress)
         {
-
+            ParentServer.Log(LogLevel.Noisy, "Handling ICMP packet: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
             if (!CreateIcmpResponse(ipv4Packet, out var icmpv4PacketResponse))
             {
+                ParentServer.Log(LogLevel.Warning, "Failed to create an ICMPv4 response for this packet: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
+                return;
+            }
+            var ipv4ResponsePacket = CreateIPv4Packet(ipv4Packet);
+            if (!CreateEthernetFramePacket(ipv4ResponsePacket, icmpv4PacketResponse, icmpDestinationAddress, out var response))
+            {
+                ParentServer.Log(LogLevel.Warning, "Failed to create an EthernetFramePacket response for this packet: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
                 return;
             }
 
-            this.Log(LogLevel.Noisy, "Handling ICMP packet: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
-
-            var ipv4ResponePacket = CreateIPv4Packet(ipv4Packet);
-            var response = CreateEthernetFramePacket(ipv4ResponePacket, icmpv4PacketResponse, icmpDestinationAddress);
-
+            ParentServer.Log(LogLevel.Noisy, "Sending EthernetFrame with a response: {0}", response.ToString());
             FrameReady?.Invoke(response);
         }
 
@@ -70,12 +69,16 @@ namespace Antmicro.Renode.Network
         {
             icmpPacketResponse = null;
 
+            ParentServer.Log(LogLevel.Warning, "Handling ICMP packet: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
+            this.Log(LogLevel.Warning, "Handling ICMP packet: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
             if (!GetReplyIfRequestSupported(ipv4Packet, out var byteReply))
             {
+                ParentServer.Log(LogLevel.Warning, "Cannot reply to a packet. Either the request is not supported or the response packet creation failed: {0}", (ICMPv4Packet)ipv4Packet.PayloadPacket);
                 return false;
             }
 
             icmpPacketResponse = CreateIcmpv4Packet(ipv4Packet, byteReply);
+            ParentServer.Log(LogLevel.Noisy, "Created an ICMPv4 response: {0}", icmpPacketResponse);
             return true;
         }
 
@@ -87,27 +90,33 @@ namespace Antmicro.Renode.Network
         /// <param name="ipv4Packet"></param>
         /// <param name="byteReply"></param>
         /// <returns></returns>
-        bool GetReplyIfRequestSupported(IPv4Packet ipv4Packet, out byte[] byteReply)
+        private bool GetReplyIfRequestSupported(IPv4Packet ipv4Packet, out byte[] byteReply)
         {
-            byteReply = null;
+            // byteReply =  null;
+            byteReply = new byte[8];
+            for (var i = 0; i < byteReply.Length; i++)
+                byteReply[i] = 0;
 
-            // If the destination address is not same as our IP, we ignore it
-            if (ipv4Packet.DestinationAddress.Equals(IP))
+            var ipv4PacketPayload = (ICMPv4Packet)ipv4Packet.PayloadPacket;
+            ParentServer.Log(LogLevel.Noisy, "Getting a reply if we support it");
+
+            if (!ipv4Packet.DestinationAddress.Equals(IP))
             {
-                this.Log(LogLevel.Warning, "Wrong destination address: {0}",
-                    ipv4Packet.DestinationAddress);
+                ParentServer.Log(LogLevel.Warning, "The destination IP is not equal to our IP, so we ignore the request: {0}", ipv4PacketPayload);
                 return false;
             }
+            ParentServer.Log(LogLevel.Noisy, "The IP address is equal to our IP, so we try to service the request: {0}", ipv4PacketPayload);
 
-            // For now we only respond to Echo Requests so everything else is discarded
-            if (!((ICMPv4Packet)ipv4Packet.PayloadPacket).TypeCode.Equals(ICMPv4TypeCodes.EchoRequest))
+            if (!ipv4PacketPayload.TypeCode.Equals(ICMPv4TypeCodes.EchoRequest))
             {
-                this.Log(LogLevel.Warning, "Unsupported ICMP code: {0}",
-                    ((ICMPv4Packet)ipv4Packet.PayloadPacket));
+                ParentServer.Log(LogLevel.Warning, "Unsupported ICMP code: {0}",
+                    ipv4PacketPayload);
                 return false;
             }
+            ParentServer.Log(LogLevel.Noisy, "The ICMP code is supported so we service it: {0}", ipv4PacketPayload);
 
-            ICMPv4TypeCodes.EchoReply.AsRawBytes().CopyTo(byteReply, 0);
+            BitConverter.GetBytes((ushort)ICMPv4TypeCodes.EchoReply).CopyTo(byteReply, 0);
+            ParentServer.Log(LogLevel.Noisy, "Created a byte reply to the ICMP request: {0}", byteReply.Length);
             return true;
         }
 
@@ -120,28 +129,44 @@ namespace Antmicro.Renode.Network
         /// <returns></returns>
         private ICMPv4Packet CreateIcmpv4Packet(IPv4Packet ipv4Packet, byte[] byteReply)
         {
+            ParentServer.Log(LogLevel.Noisy, "Creating an ICMPv4 response packet");
             var icmpv4Packet = (ICMPv4Packet)ipv4Packet.PayloadPacket;
+            var byteArrayReply = new ByteArraySegment(byteReply);
+            var icmpv4PacketResponse = new ICMPv4Packet(byteArrayReply);
+            /****************************************************************
 
-            var icmpv4PacketResponse = new ICMPv4Packet(new ByteArraySegment(byteReply));
+            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            |     Type      |     Code      |          Checksum             |
+            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+            |           Identifier          |        Sequence Number        |
+            +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-            // We can copy that from request packet because they are the same in the request and the replay
+            ****************************************************************/
+            // We can copy that from request packet because they are the same in the request and the reply
+            icmpv4PacketResponse.Data = new byte[icmpv4Packet.Data.Length];
+            for (var i = 0; i < icmpv4PacketResponse.Data.Length; i++) icmpv4PacketResponse.Data[i] = 0;
+
             icmpv4Packet.Data.CopyTo(icmpv4PacketResponse.Data, 0);
             icmpv4PacketResponse.ID = icmpv4Packet.ID;
             icmpv4PacketResponse.Sequence = icmpv4Packet.Sequence;
 
+            ParentServer.Log(LogLevel.Noisy, "Created ICMPv4 response packet: {0}", icmpv4PacketResponse.PayloadPacket);
             return icmpv4PacketResponse;
         }
 
 
         /// <summary>
-        /// Creates an IPv4 response packet
+        /// Creates an IPv4 response packet from a given IPv4 packet
         /// </summary>
         /// <param name="ipv4Packet"></param>
         /// <returns></returns>
         private IPv4Packet CreateIPv4Packet(IPv4Packet ipv4Packet)
         {
-            var ipv4PacketResponse = new IPv4Packet(IP,
-                ((IPv4Packet)ipv4Packet.ParentPacket).SourceAddress);
+            ParentServer.Log(LogLevel.Noisy, "Creating IPv4 packet response");
+            // var ipv4PacketResponse = new IPv4Packet(IP,
+            //     ((IPv4Packet)ipv4Packet.ParentPacket).SourceAddress);
+            var ipv4PacketResponse = new IPv4Packet(IP, ipv4Packet.SourceAddress);
+            ParentServer.Log(LogLevel.Noisy, "Created IPv4 packet response");
             return ipv4PacketResponse;
         }
 
@@ -153,9 +178,11 @@ namespace Antmicro.Renode.Network
         /// <param name="icmpv4PacketResponse"></param>
         /// <param name="icmpDestinationAddress"></param>
         /// <returns></returns>
-        private EthernetFrame CreateEthernetFramePacket(IPv4Packet ipv4Packet, ICMPv4Packet icmpv4PacketResponse,
-            PhysicalAddress icmpDestinationAddress)
+        private bool CreateEthernetFramePacket(IPv4Packet ipv4Packet, ICMPv4Packet icmpv4PacketResponse,
+            PhysicalAddress icmpDestinationAddress, out EthernetFrame response)
         {
+            ParentServer.Log(LogLevel.Noisy, "Creating EthernetFramePacket response");
+            response = null;
             ipv4Packet.PayloadPacket = icmpv4PacketResponse;
 
             var ethernetResponse = new EthernetPacket((PhysicalAddress)MAC,
@@ -165,13 +192,19 @@ namespace Antmicro.Renode.Network
                 PayloadPacket = ipv4Packet
             };
             icmpv4PacketResponse.UpdateCalculatedValues();
+            ParentServer.Log(LogLevel.Noisy, "Created EthernetPacket: {0}", ethernetResponse.ToString());
 
-            this.Log(LogLevel.Noisy, "Sending response: {0}",
-                ethernetResponse);
 
-            EthernetFrame.TryCreateEthernetFrame(ethernetResponse.Bytes,
-                false, out var response);
-            return response;
+            if (!EthernetFrame.TryCreateEthernetFrame(ethernetResponse.Bytes,
+                true, out var responseEthernetFrame))
+            {
+                ParentServer.Log(LogLevel.Warning, "Failed to create EthernetFrame response");
+                return false;
+            }
+            response = responseEthernetFrame;
+            ParentServer.Log(LogLevel.Noisy, "Created EthernetFramePacket response: {0}", response.ToString());
+
+            return true;
         }
     }
 }
