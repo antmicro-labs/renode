@@ -55,7 +55,7 @@ namespace Antmicro.Renode.Network
             modules = new Dictionary<int, IServerModule>();
             modulesNames = new Dictionary<string, int>();
 
-            IcmpModule = new IcmpServerModule(this,IP, MAC);
+            IcmpModule = new IcmpServerModule(this, IP, MAC);
 
 
             this.Log(LogLevel.Info, "Network server started at IP {0}", IP);
@@ -163,7 +163,7 @@ namespace Antmicro.Renode.Network
         /// <param name="packet">Ipv4 packet with the ICMP request</param>
         private void HandleIcmp(IPv4Packet packet)
         {
-            this.Log(LogLevel.Noisy, "167: HandleIcmp()");
+            this.Log(LogLevel.Info, "Handle ICMPv4 request: {0}", packet.ToString());
             IcmpModule.HandleIcmpPacket(FrameReady, packet, arpTable[packet.SourceAddress]);
         }
         private void HandleUdp(UdpPacket packet)
