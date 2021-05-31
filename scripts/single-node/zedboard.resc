@@ -16,9 +16,6 @@ $dtb?=@https://dl.antmicro.com/projects/renode/zedboard-console--devicetree-zedb
 
 showAnalyzer sysbus.uart1
 
-emulation CreateSwitch "switch"
-connector Connect gem0 switch
-
 ## set timer frequency ##
 
 ttc0 SetFrequency 0 33333333
