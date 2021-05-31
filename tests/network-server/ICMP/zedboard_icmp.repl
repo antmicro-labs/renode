@@ -20,5 +20,5 @@ Ping Network Server with Zedboard
     Send Key To Uart            0xd
     Wait For Prompt On Uart     zynq> 
     Write Line To Uart          ping 192.168.1.11
-    Wait For Line On Uart       Success
+    Wait For Line On Uart       6 packets transmitted, 6 packets received, 0% packet loss
     
