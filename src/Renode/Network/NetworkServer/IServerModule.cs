@@ -21,9 +21,4 @@ namespace Antmicro.Renode.Network
         void HandleUdp(IPEndPoint source, UdpPacket packet,
             Action<IPEndPoint, UdpPacket> callback);
     }
-
-    public interface IIcmpServerModule : IServerModule
-    {
-        void HandleIcmp(IPv4Packet packet);
-    }
 }

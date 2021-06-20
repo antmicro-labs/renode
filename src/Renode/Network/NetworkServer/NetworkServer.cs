@@ -30,14 +30,14 @@ namespace Antmicro.Renode.Network
     {
         public NetworkServer(string ipAddress, string macAddress = null)
         {
-            if (!IPAddress.TryParse(ipAddress, out var parsedIP))
+            if(!IPAddress.TryParse(ipAddress, out var parsedIP))
             {
                 new ConstructionException($"Invalid IP address: {ipAddress}");
             }
 
-            if (macAddress != null)
+            if(macAddress != null)
             {
-                if (!MACAddress.TryParse(macAddress, out var parsedMAC))
+                if(!MACAddress.TryParse(macAddress, out var parsedMAC))
                 {
                     new ConstructionException($"Invalid MAC address: {macAddress}");
                 }
@@ -55,8 +55,7 @@ namespace Antmicro.Renode.Network
             modules = new Dictionary<int, IServerModule>();
             modulesNames = new Dictionary<string, int>();
 
-            IcmpModule = new IcmpServerModule(this, IP, MAC);
-
+            icmpModule = new IcmpServerModule(this, IP, MAC);
 
             this.Log(LogLevel.Info, "Network server started at IP {0}", IP);
         }
@@ -68,7 +67,7 @@ namespace Antmicro.Renode.Network
 
         public IServerModule TryGetByName(string name, out bool success)
         {
-            if (!modulesNames.TryGetValue(name, out var port))
+            if(!modulesNames.TryGetValue(name, out var port))
             {
                 success = false;
                 return null;
@@ -80,13 +79,13 @@ namespace Antmicro.Renode.Network
 
         public bool RegisterModule(IServerModule module, int port, string name)
         {
-            if (modules.ContainsKey(port))
+            if(modules.ContainsKey(port))
             {
                 this.Log(LogLevel.Error, "Couldn't register module on port {0} as it's already used", port);
                 return false;
             }
 
-            if (modulesNames.ContainsKey(name))
+            if(modulesNames.ContainsKey(name))
             {
                 this.Log(LogLevel.Error, "Couldn't register module by name {0} as it's already used", name);
                 return false;
@@ -110,7 +109,7 @@ namespace Antmicro.Renode.Network
             switch (ethernetPacket.Type)
             {
                 case EthernetPacketType.Arp:
-                    if (TryHandleArp((ARPPacket)ethernetPacket.PayloadPacket, out var arpResponse))
+                    if(TryHandleArp((ARPPacket)ethernetPacket.PayloadPacket, out var arpResponse))
                     {
                         var ethernetResponse = new EthernetPacket((PhysicalAddress)MAC, ethernetPacket.SourceHwAddress, EthernetPacketType.None);
                         ethernetResponse.PayloadPacket = arpResponse;
@@ -135,7 +134,6 @@ namespace Antmicro.Renode.Network
 
         public MACAddress MAC { get; set; }
         public IPAddress IP { get; set; }
-        public IcmpServerModule IcmpModule { get; set; }
         public event Action<EthernetFrame> FrameReady;
 
         private void HandleIPv4(IPv4Packet packet)
@@ -164,20 +162,19 @@ namespace Antmicro.Renode.Network
         private void HandleIcmp(IPv4Packet packet)
         {
             this.Log(LogLevel.Info, "Handle ICMPv4 request: {0}", packet.ToString());
-            IcmpModule.HandleIcmpPacket(FrameReady, packet, arpTable[packet.SourceAddress]);
+            icmpModule.HandleIcmpPacket(FrameReady, packet, arpTable[packet.SourceAddress]);
         }
         private void HandleUdp(UdpPacket packet)
         {
             this.Log(LogLevel.Noisy, "Handling UDP packet: {0}", packet);
 
-            if (!modules.TryGetValue(packet.DestinationPort, out var module))
+            if(!modules.TryGetValue(packet.DestinationPort, out var module))
             {
                 this.Log(LogLevel.Warning, "Received UDP packet on port {0}, but no service is active", packet.DestinationPort);
                 return;
             }
 
             var src = new IPEndPoint(((IPv4Packet)packet.ParentPacket).SourceAddress, packet.SourcePort);
-            // We cast the module to a UDP server so it uses its implementation of HandleUdp
             ((IUdpServerModule)module).HandleUdp(src, packet,
                 (s, r) => HandleUdpResponse(s, r));
         }
@@ -203,13 +200,13 @@ namespace Antmicro.Renode.Network
 
             this.Log(LogLevel.Noisy, "Handling ARP packet: {0}", packet);
 
-            if (packet.Operation != ARPOperation.Request)
+            if(packet.Operation != ARPOperation.Request)
             {
                 this.Log(LogLevel.Warning, "Unsupported ARP packet: {0}", packet);
                 return false;
             }
 
-            if (!packet.TargetProtocolAddress.Equals(IP))
+            if(!packet.TargetProtocolAddress.Equals(IP))
             {
                 this.Log(LogLevel.Noisy, "This ARP packet is not directed to me. Ignoring");
                 return false;
@@ -225,7 +222,7 @@ namespace Antmicro.Renode.Network
             this.Log(LogLevel.Noisy, "Sending ARP response");
             return true;
         }
-
+        private readonly IcmpServerModule icmpModule;
         private readonly Dictionary<int, IServerModule> modules;
         private readonly Dictionary<string, int> modulesNames;
         private readonly Dictionary<IPAddress, PhysicalAddress> arpTable;
